@@ -28,7 +28,7 @@ inputs:
 
 templates:
     imports: |-
-        from PyQt4 import Qt
+        from PyQt5 import Qt
         import sip
         from gnuradio import fosphor
         from gnuradio.fft import window
