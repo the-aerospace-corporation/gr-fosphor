@@ -130,7 +130,7 @@ endif()
 
 find_package(Doxygen)
 
-find_package(PythonLibs 2)
+find_package(PythonLibs 3)
 
 find_package(SWIG)
 

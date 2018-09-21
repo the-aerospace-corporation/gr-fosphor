@@ -23,7 +23,7 @@
 include(GrPlatform) #define LIB_SUFFIX
 include(GrMiscUtils)
 
-find_package(PythonInterp 2)
+find_package(PythonInterp 3)
 
 add_custom_command(
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/fosphor

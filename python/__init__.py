@@ -24,4 +24,4 @@ description here (python/__init__.py).
 '''
 
 # import swig generated symbols into the fosphor namespace
-from fosphor_swig import *
+from .fosphor_swig import *
