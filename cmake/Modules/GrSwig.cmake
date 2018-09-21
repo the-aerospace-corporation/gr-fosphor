@@ -35,11 +35,11 @@ include(GrPython)
 function(GR_SWIG_MAKE_DOCS output_file)
     if(ENABLE_DOXYGEN)
 
-        #setup the input files variable list, quote formated
+        #setup the input files variable list, quote formatted
         set(input_files)
         unset(INPUT_PATHS)
         foreach(input_path ${ARGN})
-            if (IS_DIRECTORY ${input_path}) #when input path is a directory
+            if(IS_DIRECTORY ${input_path}) #when input path is a directory
                 file(GLOB input_path_h_files ${input_path}/*.h)
             else() #otherwise its just a file, no glob
                 set(input_path_h_files ${input_path})
@@ -76,7 +76,7 @@ function(GR_SWIG_MAKE_DOCS output_file)
         add_custom_command(
             OUTPUT ${output_file}
             DEPENDS ${input_files} ${stamp-file} ${OUTPUT_DIRECTORY}/xml/index.xml
-            COMMAND ${PYTHON_EXECUTABLE} ${PYTHON_DASH_B}
+            COMMAND ${PYTHON_EXECUTABLE} -B
                 ${CMAKE_SOURCE_DIR}/docs/doxygen/swig_doc.py
                 ${OUTPUT_DIRECTORY}/xml
                 ${output_file}
@@ -105,20 +105,39 @@ endfunction(GR_SWIG_MAKE_DOCS)
 macro(GR_SWIG_MAKE name)
     set(ifiles ${ARGN})
 
-    # Shimming this in here to take care of a SWIG bug with handling
-    # vector<size_t> and vector<unsigned int> (on 32-bit machines) and
-    # vector<long unsigned int> (on 64-bit machines). Use this to test
-    # the size of size_t, then set SIZE_T_32 if it's a 32-bit machine
-    # or not if it's 64-bit. The logic in gr_type.i handles the rest.
-    INCLUDE (CheckTypeSize)
-    CHECK_TYPE_SIZE("size_t" SIZEOF_SIZE_T)
-    CHECK_TYPE_SIZE("unsigned int" SIZEOF_UINT)
-    if(${SIZEOF_SIZE_T} EQUAL ${SIZEOF_UINT})
-      list(APPEND GR_SWIG_FLAGS -DSIZE_T_32)
-    endif(${SIZEOF_SIZE_T} EQUAL ${SIZEOF_UINT})
+    # Take care of a SWIG < 3.0 bug with handling std::vector<size_t>,
+    # by mapping to the correct sized type on the runtime system, one
+    # of "unsigned int", "unsigned long", or "unsigned long long".
+    # Compare the sizeof(size_t) with the sizeof the other types, and
+    # pick the first one in the list with the same sizeof. The logic
+    # in gnuradio-runtime/swig/gr_types.i handles the rest. It is
+    # probably not necessary to do this assignment all of the time,
+    # but it's easier to do it this way than to figure out the
+    # conditions when it is necessary -- and doing it this way won't
+    # hurt.  This bug seems to have been fixed with SWIG >= 3.0, and
+    # mostly happens when not doing a native build (e.g., on Mac OS X
+    # when using a 64-bit CPU but building for 32-bit).
+
+    if(SWIG_VERSION VERSION_LESS "3.0.0")
+        include(CheckTypeSize)
+        check_type_size("size_t" SIZEOF_SIZE_T)
+        check_type_size("unsigned int" SIZEOF_UINT)
+        check_type_size("unsigned long" SIZEOF_UL)
+        check_type_size("unsigned long long" SIZEOF_ULL)
+
+        if(${SIZEOF_SIZE_T} EQUAL ${SIZEOF_UINT})
+            list(APPEND GR_SWIG_FLAGS -DSIZE_T_UINT)
+        elseif(${SIZEOF_SIZE_T} EQUAL ${SIZEOF_UL})
+            list(APPEND GR_SWIG_FLAGS -DSIZE_T_UL)
+        elseif(${SIZEOF_SIZE_T} EQUAL ${SIZEOF_ULL})
+            list(APPEND GR_SWIG_FLAGS -DSIZE_T_ULL)
+        else()
+            message(FATAL_ERROR "GrSwig: Unable to find replace for std::vector<size_t>; this should never happen!")
+        endif()
+    endif()
 
     #do swig doc generation if specified
-    if (GR_SWIG_DOC_FILE)
+    if(GR_SWIG_DOC_FILE)
         set(GR_SWIG_DOCS_SOURCE_DEPS ${GR_SWIG_SOURCE_DEPS})
         list(APPEND GR_SWIG_DOCS_TARGET_DEPS ${GR_SWIG_TARGET_DEPS})
         GR_SWIG_MAKE_DOCS(${GR_SWIG_DOC_FILE} ${GR_SWIG_DOC_DIRS})
@@ -127,7 +146,6 @@ macro(GR_SWIG_MAKE name)
     endif()
 
     #append additional include directories
-    find_package(PythonLibs 2)
     list(APPEND GR_SWIG_INCLUDE_DIRS ${PYTHON_INCLUDE_PATH}) #deprecated name (now dirs)
     list(APPEND GR_SWIG_INCLUDE_DIRS ${PYTHON_INCLUDE_DIRS})
 
@@ -159,11 +177,12 @@ macro(GR_SWIG_MAKE name)
     include_directories(${GR_SWIG_INCLUDE_DIRS})
     list(APPEND SWIG_MODULE_${name}_EXTRA_DEPS ${tag_file})
 
+    if (PYTHON3)
+        set(py3 "-py3")
+    endif (PYTHON3)
+
     #setup the swig flags with flags and include directories
-    set(CMAKE_SWIG_FLAGS -fvirtual -modern -keyword -w511 -module ${name} ${GR_SWIG_FLAGS})
-    foreach(dir ${GR_SWIG_INCLUDE_DIRS})
-        list(APPEND CMAKE_SWIG_FLAGS "-I${dir}")
-    endforeach(dir)
+    set(CMAKE_SWIG_FLAGS -fvirtual -modern -keyword -w511 -w314 -relativeimport ${py3} -module ${name} ${GR_SWIG_FLAGS})
 
     #set the C++ property on the swig .i file so it builds
     set_source_files_properties(${ifiles} PROPERTIES CPLUSPLUS ON)
@@ -171,7 +190,15 @@ macro(GR_SWIG_MAKE name)
     #setup the actual swig library target to be built
     include(UseSWIG)
     SWIG_ADD_MODULE(${name} python ${ifiles})
-    SWIG_LINK_LIBRARIES(${name} ${PYTHON_LIBRARIES} ${GR_SWIG_LIBRARIES})
+    if(APPLE)
+      set(PYTHON_LINK_OPTIONS "-undefined dynamic_lookup")
+    else()
+      set(PYTHON_LINK_OPTIONS ${PYTHON_LIBRARIES})
+    endif(APPLE)
+    SWIG_LINK_LIBRARIES(${name} ${PYTHON_LINK_OPTIONS} ${GR_SWIG_LIBRARIES})
+    if(${name} STREQUAL "runtime_swig")
+        SET_TARGET_PROPERTIES(${SWIG_MODULE_runtime_swig_REAL_NAME} PROPERTIES DEFINE_SYMBOL "gnuradio_runtime_EXPORTS")
+    endif(${name} STREQUAL "runtime_swig")
 
 endmacro(GR_SWIG_MAKE)
 
@@ -180,24 +207,21 @@ endmacro(GR_SWIG_MAKE)
 # GR_SWIG_INSTALL(
 #   TARGETS target target target...
 #   [DESTINATION destination]
-#   [COMPONENT component]
 # )
 ########################################################################
 macro(GR_SWIG_INSTALL)
 
     include(CMakeParseArgumentsCopy)
-    CMAKE_PARSE_ARGUMENTS(GR_SWIG_INSTALL "" "DESTINATION;COMPONENT" "TARGETS" ${ARGN})
+    CMAKE_PARSE_ARGUMENTS(GR_SWIG_INSTALL "" "DESTINATION" "TARGETS" ${ARGN})
 
     foreach(name ${GR_SWIG_INSTALL_TARGETS})
         install(TARGETS ${SWIG_MODULE_${name}_REAL_NAME}
             DESTINATION ${GR_SWIG_INSTALL_DESTINATION}
-            COMPONENT ${GR_SWIG_INSTALL_COMPONENT}
         )
 
         include(GrPython)
         GR_PYTHON_INSTALL(FILES ${CMAKE_CURRENT_BINARY_DIR}/${name}.py
             DESTINATION ${GR_SWIG_INSTALL_DESTINATION}
-            COMPONENT ${GR_SWIG_INSTALL_COMPONENT}
         )
 
         GR_LIBTOOL(
@@ -217,7 +241,7 @@ endmacro(GR_SWIG_INSTALL)
 ########################################################################
 file(WRITE ${CMAKE_BINARY_DIR}/get_swig_deps.py "
 
-import os, sys, re
+import os, sys, re, io
 
 i_include_matcher = re.compile('%(include|import)\\s*[<|\"](.*)[>|\"]')
 h_include_matcher = re.compile('#(include)\\s*[<|\"](.*)[>|\"]')
@@ -226,7 +250,7 @@ include_dirs = sys.argv[2].split(';')
 def get_swig_incs(file_path):
     if file_path.endswith('.i'): matcher = i_include_matcher
     else: matcher = h_include_matcher
-    file_contents = open(file_path, 'r').read()
+    file_contents = io.open(file_path, 'r', encoding='utf-8').read()
     return matcher.findall(file_contents, re.MULTILINE)
 
 def get_swig_deps(file_path, level):
@@ -237,7 +261,7 @@ def get_swig_deps(file_path, level):
             inc_path = os.path.join(inc_dir, inc_file)
             if not os.path.exists(inc_path): continue
             deps.extend(get_swig_deps(inc_path, level-1))
-            break #found, we dont search in lower prio inc dirs
+            break #found, we don't search in lower prio inc dirs
     return deps
 
 if __name__ == '__main__':

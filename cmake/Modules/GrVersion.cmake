@@ -33,6 +33,16 @@ set(MAINT_VERSION ${VERSION_INFO_MAINT_VERSION})
 ########################################################################
 find_package(Git)
 
+MACRO(create_manual_git_describe)
+    if(NOT GR_GIT_COUNT)
+        set(GR_GIT_COUNT "compat-xxx")
+    endif()
+    if(NOT GR_GIT_HASH)
+        set(GR_GIT_HASH "xunknown")
+    endif()
+    set(GIT_DESCRIBE "v${MAJOR_VERSION}.${API_COMPAT}-${GR_GIT_COUNT}-${GR_GIT_HASH}")
+ENDMACRO()
+
 if(GIT_FOUND AND EXISTS ${CMAKE_SOURCE_DIR}/.git)
     message(STATUS "Extracting version information from git describe...")
     execute_process(
@@ -40,8 +50,11 @@ if(GIT_FOUND AND EXISTS ${CMAKE_SOURCE_DIR}/.git)
         OUTPUT_VARIABLE GIT_DESCRIBE OUTPUT_STRIP_TRAILING_WHITESPACE
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     )
+    if(GIT_DESCRIBE STREQUAL "")
+        create_manual_git_describe()
+    endif()
 else()
-    set(GIT_DESCRIBE "v${MAJOR_VERSION}.${API_COMPAT}.x-xxx-xunknown")
+    create_manual_git_describe()
 endif()
 
 ########################################################################
@@ -70,11 +83,7 @@ else()
     # VERSION: 3.3.1{.x}
     # DOCVER:  3.3.1{.x}
     # LIBVER:  3.3.1{.x}
-    if("${MAINT_VERSION}" STREQUAL "0")
-        set(VERSION "${MAJOR_VERSION}.${API_COMPAT}.${MINOR_VERSION}")
-    else()
-        set(VERSION "${MAJOR_VERSION}.${API_COMPAT}.${MINOR_VERSION}.${MAINT_VERSION}")
-    endif()
+    set(VERSION "${MAJOR_VERSION}.${API_COMPAT}.${MINOR_VERSION}.${MAINT_VERSION}")
     set(DOCVER "${VERSION}")
     set(LIBVER "${VERSION}")
     set(RC_MINOR_VERSION ${MINOR_VERSION})
