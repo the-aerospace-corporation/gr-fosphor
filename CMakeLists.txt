@@ -25,6 +25,11 @@ cmake_minimum_required(VERSION 2.6)
 project(gr-fosphor CXX C)
 enable_testing()
 
+if(DEFINED ENV{PYBOMBS_PREFIX})
+    set(CMAKE_INSTALL_PREFIX $ENV{PYBOMBS_PREFIX})
+    message(STATUS "PyBOMBS installed GNU Radio. Setting CMAKE_INSTALL_PREFIX to $ENV{PYBOMBS_PREFIX}")
+endif()
+
 #select the release build type by default to get optimization flags
 if(NOT CMAKE_BUILD_TYPE)
    set(CMAKE_BUILD_TYPE "Release")
@@ -32,14 +37,14 @@ if(NOT CMAKE_BUILD_TYPE)
 endif(NOT CMAKE_BUILD_TYPE)
 set(CMAKE_BUILD_TYPE ${CMAKE_BUILD_TYPE} CACHE STRING "")
 
-list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake/Modules)
+# Make sure our local CMake Modules path comes first
+list(INSERT CMAKE_MODULE_PATH 0 ${CMAKE_SOURCE_DIR}/cmake/Modules)
 
 # Set the version information here
 set(VERSION_INFO_MAJOR_VERSION 3)
 set(VERSION_INFO_API_COMPAT    8)
 set(VERSION_INFO_MINOR_VERSION 0)
 set(VERSION_INFO_MAINT_VERSION git)
-include(GrVersion) #setup version info
 
 ########################################################################
 # Compiler specific setup
@@ -64,7 +69,7 @@ set(Boost_ADDITIONAL_VERSIONS
     "1.60.0" "1.60" "1.61.0" "1.61" "1.62.0" "1.62" "1.63.0" "1.63" "1.64.0" "1.64"
     "1.65.0" "1.65" "1.66.0" "1.66" "1.67.0" "1.67" "1.68.0" "1.68" "1.69.0" "1.69"
 )
-find_package(Boost "1.35" COMPONENTS system thread)
+find_package(Boost "1.35" COMPONENTS system thread regex program_options filesystem)
 
 if(NOT Boost_FOUND)
     message(FATAL_ERROR "Boost required to compile gr-fosphor")
@@ -75,7 +80,22 @@ add_definitions(-DBOOST_ALL_DYN_LINK)
 ########################################################################
 # Install directories
 ########################################################################
+find_package(Gnuradio "3.8" REQUIRED COMPONENTS runtime fft)
 include(GrPlatform) #define LIB_SUFFIX
+include(GrVersion) #setup version info
+
+if(NOT CMAKE_MODULES_DIR)
+  # If the path to cmake modules is not defined, check for a prefix definition.
+  if(CMAKE_INSTALL_PREFIX)
+    # Set the cmake modules path to reside in the prefix.
+    set(CMAKE_MODULES_DIR ${CMAKE_INSTALL_PREFIX}/lib${LIB_SUFFIX}/cmake)
+  else()
+    # If no prefix is defined, reside in the default system path.
+    set(CMAKE_MODULES_DIR lib${LIB_SUFFIX}/cmake)
+  endif(CMAKE_INSTALL_PREFIX)
+endif(NOT CMAKE_MODULES_DIR)
+
+set(GR_CMAKE_DIR        ${CMAKE_MODULES_DIR}/fosphor)
 set(GR_RUNTIME_DIR      bin)
 set(GR_LIBRARY_DIR      lib${LIB_SUFFIX})
 set(GR_INCLUDE_DIR      include)
@@ -124,9 +144,6 @@ endif (Qt5_FOUND)
 ########################################################################
 # Find gnuradio build dependencies
 ########################################################################
-set(GR_REQUIRED_COMPONENTS RUNTIME FFT)
-find_package(Gnuradio 3.8.0 REQUIRED)
-
 find_package(CppUnit)
 if(NOT CPPUNIT_FOUND)
     message(FATAL_ERROR "CppUnit required to compile gr-fosphor")
@@ -165,19 +182,6 @@ endmacro(list_cond_append)
 ########################################################################
 # Setup the include and linker paths
 ########################################################################
-include_directories(
-    ${CMAKE_SOURCE_DIR}/include
-    ${Boost_INCLUDE_DIRS}
-    ${CPPUNIT_INCLUDE_DIRS}
-    ${GNURADIO_ALL_INCLUDE_DIRS}
-)
-
-link_directories(
-    ${Boost_LIBRARY_DIRS}
-    ${CPPUNIT_LIBRARY_DIRS}
-    ${GNURADIO_ALL_LIBRARY_DIRS}
-)
-
 # Set component parameters
 set(GR_FOSPHOR_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/include CACHE INTERNAL "" FORCE)
 set(GR_FOSPHOR_SWIG_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/swig CACHE INTERNAL "" FORCE)

@@ -93,7 +93,6 @@ list(APPEND fosphor_libraries
 	${OpenCL_LIBRARIES}
 	${FREETYPE_LIBRARIES}
 	${Boost_LIBRARIES}
-	${GNURADIO_ALL_LIBRARIES}
 	${CMAKE_DL_LIBS}
 )
 
@@ -102,7 +101,11 @@ list_cond_append(ENABLE_GLFW fosphor_libraries ${GLFW3_LIBRARIES})
 list_cond_append(ENABLE_QT   fosphor_libraries ${Qt5_LIBRARIES})
 
 add_library(gnuradio-fosphor SHARED ${fosphor_sources})
-target_link_libraries(gnuradio-fosphor ${fosphor_libraries})
+target_link_libraries(gnuradio-fosphor gnuradio::gnuradio-runtime gnuradio::gnuradio-fft ${fosphor_libraries})
 set_target_properties(gnuradio-fosphor PROPERTIES DEFINE_SYMBOL "gnuradio_fosphor_EXPORTS")
+target_include_directories(gnuradio-fosphor
+    PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include>
+    PUBLIC $<INSTALL_INTERFACE:include>
+)
 
 GR_LIBRARY_FOO(gnuradio-fosphor)
